@@ -116,6 +116,15 @@ longer drops in level. The 7.1 path follows the same code but hasn't been listen
 in upstream Wine; [`proton/upstream/`](proton/upstream/) has the patch series (compile-tested on Wine master) and
 drafts for the Wine merge request and a Proton issue.
 
+### Simpler alternative: stereo while playing
+
+If stereo is enough (your receiver can upmix it with Dolby Surround, DTS Neural:X and so on), switching the output
+to stereo while the game runs avoids all of these bugs without touching the prefix.
+[`extras/stereo-while-playing.sh`](extras/stereo-while-playing.sh) does that automatically: it switches the current
+HDMI output to its stereo profile, runs the game, and switches back. Make it executable and add
+`/path/to/stereo-while-playing.sh %command%` to the game's launch options. Tested on SteamOS with PipeWire and an
+HDMI receiver.
+
 ## How it works
 
 - **Video:** copied bit-for-bit from the set's MP4. No re-encode.
