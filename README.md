@@ -8,6 +8,10 @@ Audio fixes for **Wing Commander IV: The Price of Freedom** (30th Anniversary Ed
 2. **In-game audio on Linux / Steam Deck** (Proton only): a fix for Wine's DirectSound on 5.1/7.1 output. See
    [In-game audio on Proton](#in-game-audio-on-proton-linux--steam-deck).
 
+> **Status:** tested on Linux / SteamOS (Steam Deck). **The Windows build is untested**: it should work, but nobody
+> has run it on Windows yet. If you try it, please report how it went in an
+> [issue](https://github.com/ETA-22/wc4-ac3-remux/issues).
+
 ## 5.1 cutscenes
 
 The anniversary release (Steam/GOG) has three FMV sets, one per Steam launch option, and all of them play **stereo** audio:
