@@ -1,0 +1,7 @@
+.pkg/
+dist/
+ffmpeg-bin/
+proton/wine/
+proton/b/
+proton/make.log
+rsrc_windows_amd64.syso

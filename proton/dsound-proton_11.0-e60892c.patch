@@ -1,0 +1,134 @@
+diff -ru a/dlls/dsound/dsound_convert.c b/dlls/dsound/dsound_convert.c
+--- a/dlls/dsound/dsound_convert.c	2026-11-07 21:47:44.550363583 -0600
++++ b/dlls/dsound/dsound_convert.c	2026-11-07 22:02:10.966433752 -0600
+@@ -188,34 +188,39 @@
+ 
+ void put_mono2surround51(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+ {
++    /* Like Windows: mono plays from the front pair, not from every speaker
++     * (incl. LFE) at full gain. The other channels must still be written: the
++     * temporary mix buffer is not cleared for this put function. */
+     dsb->put_aux(dsb, pos, 0, value);
+     dsb->put_aux(dsb, pos, 1, value);
+-    dsb->put_aux(dsb, pos, 2, value);
+-    dsb->put_aux(dsb, pos, 3, value);
+-    dsb->put_aux(dsb, pos, 4, value);
+-    dsb->put_aux(dsb, pos, 5, value);
++    dsb->put_aux(dsb, pos, 2, 0.0f);
++    dsb->put_aux(dsb, pos, 3, 0.0f);
++    dsb->put_aux(dsb, pos, 4, 0.0f);
++    dsb->put_aux(dsb, pos, 5, 0.0f);
+ }
+ 
+ void put_stereo2surround51(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+ {
++    /* Front pair only, consistent with mono; centre, LFE and rears muted. */
+     if (channel == 0) { /* Left */
+         dsb->put_aux(dsb, pos, 0, value); /* Front left */
+-        dsb->put_aux(dsb, pos, 4, value); /* Back left */
+ 
+         dsb->put_aux(dsb, pos, 2, 0.0f); /* Mute front centre */
+         dsb->put_aux(dsb, pos, 3, 0.0f); /* Mute LFE */
++        dsb->put_aux(dsb, pos, 4, 0.0f); /* Mute back left */
+     } else if (channel == 1) { /* Right */
+         dsb->put_aux(dsb, pos, 1, value); /* Front right */
+-        dsb->put_aux(dsb, pos, 5, value); /* Back right */
++        dsb->put_aux(dsb, pos, 5, 0.0f); /* Mute back right */
+     }
+ }
+ 
+ void put_mono2surround71(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+ {
+-    dsb->put_aux(dsb, pos, 2, value); /* Front centre */
++    /* Front pair, same as mono on stereo and 5.1 output. */
++    dsb->put_aux(dsb, pos, 0, value); /* Front left */
++    dsb->put_aux(dsb, pos, 1, value); /* Front right */
+ 
+-    dsb->put_aux(dsb, pos, 0, 0.0f); /* Mute front left */
+-    dsb->put_aux(dsb, pos, 1, 0.0f); /* Mute front right */
++    dsb->put_aux(dsb, pos, 2, 0.0f); /* Mute front centre */
+     dsb->put_aux(dsb, pos, 3, 0.0f); /* Mute LFE */
+     dsb->put_aux(dsb, pos, 4, 0.0f); /* Mute back left */
+     dsb->put_aux(dsb, pos, 5, 0.0f); /* Mute back right */
+diff -ru a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+--- a/dlls/dsound/mixer.c	2026-11-07 21:47:44.550363583 -0600
++++ b/dlls/dsound/mixer.c	2026-11-07 22:13:38.591283485 -0600
+@@ -25,6 +25,8 @@
+ #include <assert.h>
+ #include <stdarg.h>
+ #include <math.h>	/* Insomnia - pow() function */
++#include <stdlib.h>
++#include <string.h>
+ 
+ #define COBJMACROS
+ 
+@@ -42,20 +44,57 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(dsound);
+ 
++/* Scale applied to buffer attenuations (lVolume) before mixing. 1.0 = as
++ * the application asked; 0.5 halves every attenuation (e.g. -5.12 dB becomes
++ * -2.56 dB). Wing Commander IV mixes its speech 5 dB under its music bed, so it
++ * defaults to 0.5 for WC IV's executables and 1.0 for everything else.
++ * Override with WINE_DSOUND_VOLUME_SCALE=<0..1>. */
++static double volume_scale(void)
++{
++	static double scale = -1.0;
++	if (scale < 0.0)
++	{
++		const char *env = getenv("WINE_DSOUND_VOLUME_SCALE");
++		char exe[MAX_PATH], *name;
++		double def = 1.0;
++
++		if (GetModuleFileNameA(NULL, exe, sizeof(exe)))
++		{
++			name = strrchr(exe, '\\');
++			name = name ? name + 1 : exe;
++			if (!_stricmp(name, "wc4dvd.exe") || !_stricmp(name, "wc4w.exe"))
++				def = 0.5;
++		}
++		scale = env ? atof(env) : def;
++		if (!(scale >= 0.0 && scale <= 1.0)) scale = def;
++		TRACE("volume scale %.2f\n", scale);
++	}
++	return scale;
++}
++
+ void DSOUND_RecalcVolPan(PDSVOLUMEPAN volpan)
+ {
+-	double temp;
++	double temp, vol;
++	int i;
+ 	TRACE("(%p)\n",volpan);
+ 
+ 	TRACE("Vol=%ld Pan=%ld\n", volpan->lVolume, volpan->lPan);
+ 	/* the AmpFactors are expressed in 16.16 fixed point */
+ 
+ 	/* FIXME: use calculated vol and pan ampfactors */
+-	temp = (double) (volpan->lVolume - (volpan->lPan > 0 ? volpan->lPan : 0));
++	vol = volpan->lVolume * volume_scale();
++	temp = vol - (volpan->lPan > 0 ? volpan->lPan : 0);
+ 	volpan->dwTotalAmpFactor[0] = (ULONG) (pow(2.0, temp / 600.0) * 0xffff);
+-	temp = (double) (volpan->lVolume + (volpan->lPan < 0 ? volpan->lPan : 0));
++	temp = vol + (volpan->lPan < 0 ? volpan->lPan : 0);
+ 	volpan->dwTotalAmpFactor[1] = (ULONG) (pow(2.0, temp / 600.0) * 0xffff);
+ 
++	/* Channels beyond front left/right get the volume without pan. They used
++	 * to stay 0, so on 5.1/7.1 output any buffer with a volume or pan set lost
++	 * its centre, LFE and surround channels in DSOUND_MixerVol. */
++	temp = vol;
++	for (i = 2; i < DS_MAX_CHANNELS; i++)
++		volpan->dwTotalAmpFactor[i] = (ULONG) (pow(2.0, temp / 600.0) * 0xffff);
++
+ 	TRACE("left = %lx, right = %lx\n", volpan->dwTotalAmpFactor[0], volpan->dwTotalAmpFactor[1]);
+ }
+ 
+@@ -154,6 +193,8 @@
+ 			dsb->put = put_mono2quad;
+ 		else if (ochannels == 6)
+ 			dsb->put = put_mono2surround51;
++		else if (ochannels == 8) /* was unreachable: the later 1 -> 8 branch never ran */
++			dsb->put = put_mono2surround71;
+ 	}
+ 	else if (ochannels == 1)
+ 	{

@@ -1,0 +1,73 @@
+From be540e4846fde1de4a05d2985a152eee85b03b04 Mon Sep 17 00:00:00 2001
+From: Evan Adnams <eadnams@gmail.com>
+Date: Sat, 7 Nov 2026 22:03:53 -0600
+Subject: [PATCH 3/3] dsound: Play mono and stereo buffers from the front pair
+ on multichannel output.
+
+Mono buffers were copied to all six channels of 5.1 output at full gain,
+LFE included, but only to the centre channel on 7.1. Stereo buffers went
+to the front and back pairs on 5.1 but only to the front pair on 7.1.
+The same game therefore sounded different depending on the speaker
+configuration, and on 5.1 its mono sounds came out of every speaker,
+much louder than on stereo output.
+
+Map mono to both front channels, as on stereo output, and stereo to the
+front pair, as already done for 7.1.
+---
+ dlls/dsound/mixer.c | 25 ++++++++++---------------
+ 1 file changed, 10 insertions(+), 15 deletions(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index f82e992..b33154d 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -224,36 +224,31 @@ static const struct channel_map channel_map_stereo2quad =
+ 
+ static const struct channel_map channel_map_mono2surround51 =
+ {
+-    6,
++    2,
+     {
+-        {0, 0, 1.0f},
+-        {0, 1, 1.0f},
+-        {0, 2, 1.0f},
+-        {0, 3, 1.0f},
+-        {0, 4, 1.0f},
+-        {0, 5, 1.0f},
++        {0, 0, 1.0f}, /* Front left */
++        {0, 1, 1.0f}, /* Front right */
++        /* Mute front centre, LFE, back left and back right */
+     }
+ };
+ 
+ static const struct channel_map channel_map_stereo2surround51 =
+ {
+-    4,
++    2,
+     {
+         {0, 0, 1.0f}, /* Left -> Front left */
+         {1, 1, 1.0f}, /* Right -> Front right */
+-        /* Mute front center and LFE */
+-        {0, 4, 1.0f}, /* Left -> Back left */
+-        {1, 5, 1.0f}, /* Right -> Back right */
++        /* Mute front centre, LFE, back left and back right, as for 7.1 */
+     }
+ };
+ 
+ static const struct channel_map channel_map_mono2surround71 =
+ {
+-    1,
++    2,
+     {
+-        /* Mute front left and front right */
+-        {0, 2, 1.0f}, /* Front centre */
+-        /* Mute LFE, back left, back right, side left and side right */
++        {0, 0, 1.0f}, /* Front left */
++        {0, 1, 1.0f}, /* Front right */
++        /* Mute front centre, LFE, back left, back right, side left and side right */
+     }
+ };
+ 
+-- 
+2.56.0
+
