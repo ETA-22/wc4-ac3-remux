@@ -1,5 +1,7 @@
 # wc4-ac3-remux
 
+![Wing Commander IV: 5.1 surround cutscenes](docs/banner.png)
+
 Audio fixes for **Wing Commander IV: The Price of Freedom** (30th Anniversary Edition):
 
 1. **Dolby Digital 5.1 cutscenes** (Windows and Linux): the DVD version's 5.1 mix on the FMVs, level-matched.
